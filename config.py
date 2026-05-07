@@ -19,7 +19,7 @@ WINDOW_TITLES = [
 CAPTURE_CLIENT_AREA = False
 
 # Fishing/event automation.
-SELL_FISH = True
+SELL_FISH = False
 BUY_BAIT = True
 BUY_BAIT_STACK_COUNT = 5
 

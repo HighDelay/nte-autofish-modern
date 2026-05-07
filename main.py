@@ -6,6 +6,7 @@ import json
 import random
 import sys
 import threading
+import webbrowser
 import time
 import traceback
 from pathlib import Path
@@ -49,7 +50,7 @@ CONFIG_DEFAULTS = {
     "LANGUAGE": getattr(config, "LANGUAGE", "en"),
     "WINDOW_TITLES": list(getattr(config, "WINDOW_TITLES", [])),
     "CAPTURE_CLIENT_AREA": getattr(config, "CAPTURE_CLIENT_AREA", False),
-    "SELL_FISH": getattr(config, "SELL_FISH", True),
+    "SELL_FISH": getattr(config, "SELL_FISH", False),
     "BUY_BAIT": getattr(config, "BUY_BAIT", True),
     "BUY_BAIT_STACK_COUNT": getattr(config, "BUY_BAIT_STACK_COUNT", 5),
     "GREEN_BAR_SAFE_PROPORTION": getattr(config, "GREEN_BAR_SAFE_PROPORTION", 0.4),
@@ -1371,6 +1372,7 @@ class OverlayBar:
         self.canvas.tag_bind("language", "<Button-1>", lambda _: self.switch_language())
         self.canvas.tag_bind("settings", "<Button-1>", lambda _: self.open_settings())
         self.canvas.tag_bind("close", "<Button-1>", lambda _: self.shutdown())
+        self.canvas.tag_bind("credit_link", "<Button-1>", lambda _: webbrowser.open("https://del4yowo.id.vn"))
 
     def _status_color(self, status: str) -> str:
         return {
@@ -1396,13 +1398,31 @@ class OverlayBar:
         self._rounded_rect(2, 2, self.width - 2, self.height - 2, 18, fill="#0f172a", outline="#243244", width=1)
         self.canvas.create_rectangle(22, self.height - 8, self.width - 22, self.height - 6, fill="#22d3ee", outline="")
         self.canvas.create_oval(18, 22, 30, 34, fill=self._status_color(status), outline="")
-        self.canvas.create_text(
+        title_item = self.canvas.create_text(
             42,
             20,
             anchor="w",
             text=text["app_title"],
             fill="#f8fafc",
             font=("Segoe UI", 11, "bold"),
+        )
+        # Credit text with clickable author link (next to title)
+        title_bbox = self.canvas.bbox(title_item)
+        credit_x = (title_bbox[2] + 8) if title_bbox else 160
+        tmp = self.canvas.create_text(0, 0, text="Made with \u2764 by ", font=("Segoe UI", 7))
+        tmp_bbox = self.canvas.bbox(tmp)
+        prefix_w = (tmp_bbox[2] - tmp_bbox[0]) if tmp_bbox else 85
+        self.canvas.delete(tmp)
+        self.canvas.create_text(
+            credit_x, 20, anchor="w",
+            text="Made with \u2764 by ",
+            fill="#64748b", font=("Segoe UI", 7),
+        )
+        self.canvas.create_text(
+            credit_x + prefix_w, 20, anchor="w",
+            text="HighDel4y",
+            fill="#22d3ee", font=("Segoe UI", 7, "underline"),
+            tags=("credit_link",),
         )
         self.canvas.create_text(
             42,
@@ -1434,7 +1454,7 @@ class OverlayBar:
             self.width // 2 - 10,
             44,
             anchor="center",
-            text=f"{text['sell']}: {text['on'] if getattr(config, 'SELL_FISH', True) else text['off']}  "
+            text=f"{text['sell']} (BETA): {text['on'] if getattr(config, 'SELL_FISH', False) else text['off']}  "
             f"{text['bait']}: {text['on'] if getattr(config, 'BUY_BAIT', True) else text['off']}  "
             f"{text['hotkeys']}",
             fill="#94a3b8",
@@ -1472,6 +1492,8 @@ class OverlayBar:
                 fill="#fecdd3",
                 font=("Segoe UI", 7),
             )
+
+
 
         self.root.after(100, self._refresh)
 
@@ -1544,7 +1566,7 @@ class OverlayBar:
         auto_avoid_var = tk.BooleanVar(value=bool(settings["AUTO_AVOID_FISH_BAR"]))
 
         for text, var in (
-            ("Auto sell fish when storage is full", sell_var),
+            ("Auto sell fish when storage is full (BETA)", sell_var),
             ("Auto buy bait when empty", buy_var),
             ("Capture client area only", capture_client_var),
             ("Start automatically when overlay opens", auto_start_var),
