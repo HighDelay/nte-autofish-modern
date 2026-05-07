@@ -730,9 +730,7 @@ class FishBarTracker:
     def _green_mask(self, roi):
         exact_target = np.array(self.GREEN_BAR_BGR, dtype=np.int16)
         exact_dist = np.sum(np.abs(roi.astype(np.int16) - exact_target), axis=2)
-        exact_mask = (exact_dist < 48).astype(np.uint8) * 255
-        hsv_mask = self._hsv_mask(roi, self.GREEN_HSV_LOW, self.GREEN_HSV_HIGH)
-        return cv2.bitwise_or(exact_mask, hsv_mask)
+        return (exact_dist < 15).astype(np.uint8) * 255
 
     def _yellow_masks(self, roi):
         roi_i = roi.astype(np.int16)
@@ -1147,16 +1145,55 @@ class AutomationWorker(threading.Thread):
                 self.state.update(status="stopped", message="buying_bait")
                 raise StopAutomation()
             try:
+                # Press F to dismiss the "Equip bait" popup before opening shop.
+                self._click_key("f")
                 self._sleep(2.0)
                 self._click_key("r")
-                self.wait_until_appear(self.templates.bait, 5.0, "buying_bait")
-                self._sleep(0.5)
-                self.controller.mouse_click(self.templates.bait.pos)
-                self._sleep(1.0)
-                # Take a fresh screenshot and locate MAX/BUY positions.
-                img = self._latest_frame()
-                self.templates.max.match(img)
-                self.templates.buy.match(img)
+                # Try to find and click unselected BAIT.  If it's already
+                # selected (pink border), the template won't match — check
+                # whether the Purchase/BUY button is already visible instead.
+                bait_clicked = False
+                bait_deadline = time.time() + 5.0
+                while time.time() < bait_deadline:
+                    if self.stop_event.is_set():
+                        raise StopAutomation()
+                    self._pause_gate()
+                    frame = self.controller.screenshot()
+                    if frame is None:
+                        time.sleep(0.1)
+                        continue
+                    if self.templates.bait.match(frame):
+                        self._sleep(0.5)
+                        self.controller.mouse_click(self.templates.bait.pos)
+                        bait_clicked = True
+                        break
+                    if self.templates.buy.match(frame):
+                        bait_clicked = True
+                        break
+                    time.sleep(0.1)
+                if not bait_clicked:
+                    raise TimeoutError("Could not find BAIT or Purchase button in shop")
+
+                # Ensure the Purchase button is visible (right panel fully loaded).
+                check_frame = self.controller.screenshot()
+                if check_frame is None:
+                    check_frame = frame
+                if not self.templates.buy.match(check_frame):
+                    buy_deadline = time.time() + 5.0
+                    while time.time() < buy_deadline:
+                        if self.stop_event.is_set():
+                            raise StopAutomation()
+                        self._pause_gate()
+                        frame = self.controller.screenshot()
+                        if frame is not None and self.templates.buy.match(frame):
+                            break
+                        time.sleep(0.1)
+                    else:
+                        raise TimeoutError("Timed out waiting for Purchase button")
+                # Also locate the MAX button on the same frame.
+                frame = self.controller.screenshot()
+                if frame is not None:
+                    self.templates.max.match(frame)
 
                 for _ in range(getattr(config, "BUY_BAIT_STACK_COUNT", 5)):
                     try:
@@ -1169,7 +1206,10 @@ class AutomationWorker(threading.Thread):
                         self.wait_until_appear(self.templates.get_item, 5.0, "collecting")
                         self._sleep(0.5)
                         self.controller.mouse_click()
-                        self.wait_until_appear(self.templates.bait, 5.0, "buying_bait")
+                        # Wait for shop to be ready again (BUY button visible).
+                        # Don't wait for BAIT — selected items get a pink border
+                        # that prevents the unselected template from matching.
+                        self.wait_until_appear(self.templates.buy, 5.0, "buying_bait")
                     except TimeoutError:
                         break
 
