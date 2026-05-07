@@ -503,15 +503,23 @@ class TemplateBank:
 
 
 class GameController:
-    def __init__(self, state: StateStore, stop_event: threading.Event) -> None:
+    _CAMERA_REFRESH_INTERVAL = 50  # Restart camera every N fish cycles.
+
+    def __init__(self, state: StateStore, stop_event: threading.Event) -&gt; None:
         self.state = state
         self.stop_event = stop_event
         self.window_titles = [title.lower() for title in getattr(config, "WINDOW_TITLES", [])]
         self.hwnd = None
         self.rect = None
         self.last_rect_check = 0.0
-        self.camera = bettercam.create(output_color="BGR")
+        self.camera = None
+        self._screenshot_count = 0
+        self._init_camera()
+
+    def _init_camera(self) -> None:
+        self.camera = bettercam.create(output_color="BGR", max_buffer_len=512)
         self.camera.start(target_fps=getattr(config, "TARGET_FPS", 120), video_mode=True)
+        self._screenshot_count = 0
 
     def _visible_windows(self) -> list[tuple[int, str]]:
         windows: list[tuple[int, str]] = []
@@ -608,15 +616,25 @@ class GameController:
             pass
 
     def _restart_camera(self) -> None:
-        try:
-            self.camera.stop()
-        except Exception:
-            pass
-        self.camera = bettercam.create(output_color="BGR")
-        self.camera.start(target_fps=getattr(config, "TARGET_FPS", 120), video_mode=True)
+        if self.camera is not None:
+            try:
+                self.camera.stop()
+            except Exception:
+                pass
+            try:
+                self.camera.release()
+            except Exception:
+                pass
+            del self.camera
+            self.camera = None
+        self._init_camera()
 
     def screenshot(self):
         self.focus_game()
+        # Periodically restart camera to prevent DXGI duplicator from staling.
+        self._screenshot_count += 1
+        if self._screenshot_count % (self._CAMERA_REFRESH_INTERVAL * 200) == 0:
+            self._restart_camera()
         try:
             frame = self.camera.get_latest_frame()
             if frame is None:
