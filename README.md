@@ -79,7 +79,7 @@ pip install pyinstaller
 2. Build the executable (run from the project root):
 
 ```bat
-pyinstaller --onefile --noconsole --icon=assets/templates/HOOK.png --add-data "assets;assets" --add-data "config.py;." --name NTE-AutoFish-Modern main.py
+pyinstaller --onefile --noconsole --add-data "assets;assets" --add-data "config.py;." --name NTE-AutoFish-Modern main.py
 ```
 
 3. The compiled `NTE-AutoFish-Modern.exe` will be in the `dist/` folder.

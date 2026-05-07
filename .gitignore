@@ -11,3 +11,6 @@ settings.json
 .idea/
 .vscode/
 .DS_Store
+build/
+dist/
+NTE-AutoFish-Modern.spec
