@@ -654,7 +654,7 @@ class GameController:
 
 
 class FishBarTracker:
-    GREEN_BAR_BGR = (173, 202, 42)
+    GREEN_BAR_BGR = (180, 213, 47)
     YELLOW_CURSOR_BGR_TARGETS = (
         (157, 246, 254),
         (128, 250, 255),
