@@ -66,6 +66,36 @@ If the overlay stays on "Finding game window", add your game window title in the
 
 Use `CAPTURE_CLIENT_AREA = True` only if your templates were captured from the game client area instead of the full window rectangle.
 
+## Building a Standalone EXE
+
+You can compile the script into a single portable `.exe` using [PyInstaller](https://pyinstaller.org/).
+
+1. Install PyInstaller:
+
+```bat
+pip install pyinstaller
+```
+
+2. Build the executable (run from the project root):
+
+```bat
+pyinstaller --onefile --noconsole --icon=assets/templates/HOOK.png --add-data "assets;assets" --add-data "config.py;." --name NTE-AutoFish-Modern main.py
+```
+
+3. The compiled `NTE-AutoFish-Modern.exe` will be in the `dist/` folder.
+
+> **Note:** You must run the `.exe` as **administrator** for keyboard/mouse input to work.
+
+**What the flags do:**
+
+| Flag | Purpose |
+|---|---|
+| `--onefile` | Bundles everything into a single `.exe` |
+| `--noconsole` | Hides the console window (GUI only) |
+| `--add-data "assets;assets"` | Includes the `assets/templates` folder |
+| `--add-data "config.py;."` | Includes the default config |
+| `--name NTE-AutoFish-Modern` | Names the output executable |
+
 ## Notes
 
 This project does not modify game files or inspect network traffic. It only reads the screen and sends normal keyboard/mouse input. Use it at your own risk.
