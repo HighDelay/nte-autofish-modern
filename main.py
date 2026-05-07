@@ -1027,7 +1027,7 @@ class AutomationWorker(threading.Thread):
             if self.stop_event.is_set():
                 raise StopAutomation()
             self._pause_gate()
-            time.sleep(min(0.08, end_at - time.time()))
+            time.sleep(max(0, min(0.08, end_at - time.time())))
 
     def _click_key(self, key: str, duration: float = 0.09) -> None:
         if self.controller:
