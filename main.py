@@ -660,8 +660,8 @@ class FishBarTracker:
         (128, 250, 255),
         (190, 252, 255),
     )
-    GREEN_HSV_LOW = (35, 45, 115)
-    GREEN_HSV_HIGH = (100, 255, 255)
+    GREEN_HSV_LOW = (75, 100, 140)
+    GREEN_HSV_HIGH = (95, 255, 255)
     YELLOW_HSV_LOW = (20, 25, 200)
     YELLOW_HSV_HIGH = (38, 255, 255)
 
@@ -730,7 +730,9 @@ class FishBarTracker:
     def _green_mask(self, roi):
         exact_target = np.array(self.GREEN_BAR_BGR, dtype=np.int16)
         exact_dist = np.sum(np.abs(roi.astype(np.int16) - exact_target), axis=2)
-        return (exact_dist < 15).astype(np.uint8) * 255
+        exact_mask = (exact_dist < 35).astype(np.uint8) * 255
+        hsv_mask = self._hsv_mask(roi, self.GREEN_HSV_LOW, self.GREEN_HSV_HIGH)
+        return cv2.bitwise_or(exact_mask, hsv_mask)
 
     def _yellow_masks(self, roi):
         roi_i = roi.astype(np.int16)
