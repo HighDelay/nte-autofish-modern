@@ -41,10 +41,18 @@ else:
 
 import config
 
+# When frozen with PyInstaller --onefile, bundled assets are extracted to a
+# temp dir (sys._MEIPASS).  Persistent user files (settings, logs) must be
+# stored next to the .exe so they survive between runs.
+if getattr(sys, "frozen", False):
+    BUNDLE_DIR = Path(sys._MEIPASS)
+    APP_DIR = Path(sys.executable).resolve().parent
+else:
+    BUNDLE_DIR = Path(__file__).resolve().parent
+    APP_DIR = BUNDLE_DIR
 
-ROOT = Path(__file__).resolve().parent
-TEMPLATE_DIR = ROOT / "assets" / "templates"
-SETTINGS_FILE = ROOT / "settings.json"
+TEMPLATE_DIR = BUNDLE_DIR / "assets" / "templates"
+SETTINGS_FILE = APP_DIR / "settings.json"
 
 CONFIG_DEFAULTS = {
     "LANGUAGE": getattr(config, "LANGUAGE", "en"),
@@ -1305,7 +1313,7 @@ class AutomationWorker(threading.Thread):
         except Exception as exc:
             KeyboardDriver.release_all()
             self.state.update(status="error", message="error", last_error=str(exc))
-            log_dir = ROOT / "logs"
+            log_dir = APP_DIR / "logs"
             log_dir.mkdir(exist_ok=True)
             with (log_dir / "modern_autofish_error.log").open("a", encoding="utf-8") as handle:
                 handle.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}]\n")
