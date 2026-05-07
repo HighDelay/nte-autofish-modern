@@ -505,7 +505,7 @@ class TemplateBank:
 class GameController:
     _CAMERA_REFRESH_INTERVAL = 50  # Restart camera every N fish cycles.
 
-    def __init__(self, state: StateStore, stop_event: threading.Event) -&gt; None:
+    def __init__(self, state: StateStore, stop_event: threading.Event) -> None:
         self.state = state
         self.stop_event = stop_event
         self.window_titles = [title.lower() for title in getattr(config, "WINDOW_TITLES", [])]
