@@ -599,11 +599,26 @@ class GameController:
         except Exception:
             pass
 
+    def _restart_camera(self) -> None:
+        try:
+            self.camera.stop()
+        except Exception:
+            pass
+        self.camera = bettercam.create(output_color="BGR")
+        self.camera.start(target_fps=getattr(config, "TARGET_FPS", 120), video_mode=True)
+
     def screenshot(self):
         self.focus_game()
-        frame = self.camera.get_latest_frame()
-        if frame is None:
-            frame = self.camera.grab()
+        try:
+            frame = self.camera.get_latest_frame()
+            if frame is None:
+                frame = self.camera.grab()
+        except Exception:
+            try:
+                self._restart_camera()
+            except Exception:
+                pass
+            return None
         if frame is None:
             return None
 
@@ -632,6 +647,7 @@ class GameController:
         x = int(left + pos[0])
         y = int(top + pos[1])
         win32api.SetCursorPos((x, y))
+        time.sleep(0.05)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
         time.sleep(0.045)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
@@ -1071,6 +1087,12 @@ class AutomationWorker(threading.Thread):
             if template.match(frame):
                 self._sleep(0.05)
                 return "template"
+            # Catch transient popups (e.g. "Equip bait before fishing") while
+            # they are still on screen, instead of waiting for the full timeout.
+            if self.templates.need_bait.match(frame):
+                return "need_bait"
+            if self.templates.full.match(frame):
+                return "full"
             time.sleep(getattr(config, "FISH_BAR_FAST_POLL_INTERVAL", 0.01))
         raise TimeoutError(f"Timed out waiting for {template.name}")
 
@@ -1080,13 +1102,16 @@ class AutomationWorker(threading.Thread):
             raise TimeoutError("No screenshot available")
         return frame
 
-    def handle_event(self) -> None:
+    def handle_event(self, detected_event: str | None = None) -> None:
         self.state.update(status="running", message="handling_event")
-        self._click_key("f")
-        self._sleep(0.5)
-        image = self._latest_frame()
+        if detected_event is None:
+            self._click_key("f")
+            self._sleep(0.5)
+            image = self._latest_frame()
+        else:
+            image = None
 
-        if self.templates.full.match(image):
+        if detected_event == "full" or (image is not None and self.templates.full.match(image)):
             self.state.update(message="storage_full")
             if not getattr(config, "SELL_FISH", True):
                 self.state.update(status="stopped", message="storage_full")
@@ -1109,43 +1134,57 @@ class AutomationWorker(threading.Thread):
                     self._click_key("esc")
             raise StopAutomation()
 
-        if self.templates.month_card.match(image):
+        if detected_event == "month_card" or (image is not None and self.templates.month_card.match(image)):
             self.state.update(message="month_card")
             self.controller.mouse_click()
             self.wait_until_appear(self.templates.get_item, 5.0, "month_card")
             self.controller.mouse_click()
             return
 
-        if self.templates.need_bait.match(image):
+        if detected_event == "need_bait" or (image is not None and self.templates.need_bait.match(image)):
             self.state.update(message="buying_bait")
             if not getattr(config, "BUY_BAIT", True):
                 self.state.update(status="stopped", message="buying_bait")
                 raise StopAutomation()
-            self._sleep(2.0)
-            self._click_key("r")
-            self.wait_until_appear(self.templates.bait, 5.0, "buying_bait")
-            self.controller.mouse_click(self.templates.bait.pos)
-
-            for _ in range(getattr(config, "BUY_BAIT_STACK_COUNT", 5)):
-                image = self._latest_frame()
-                if not self.templates.max.match(image):
-                    self.wait_until_appear(self.templates.max, 2.0, "buying_bait")
-                if not self.templates.buy.match(image):
-                    self.wait_until_appear(self.templates.buy, 2.0, "buying_bait")
-                self.controller.mouse_click(self.templates.max.pos)
-                self._sleep(0.2)
-                self.controller.mouse_click(self.templates.buy.pos)
-                self.wait_until_appear(self.templates.confirm, 5.0, "buying_bait")
-                self.controller.mouse_click(self.templates.confirm.pos)
-                self.wait_until_appear(self.templates.get_item, 5.0, "collecting")
-                self.controller.mouse_click()
+            try:
+                self._sleep(2.0)
+                self._click_key("r")
                 self.wait_until_appear(self.templates.bait, 5.0, "buying_bait")
+                self._sleep(0.5)
+                self.controller.mouse_click(self.templates.bait.pos)
+                self._sleep(1.0)
+                # Take a fresh screenshot and locate MAX/BUY positions.
+                img = self._latest_frame()
+                self.templates.max.match(img)
+                self.templates.buy.match(img)
 
-            self._click_key("esc")
-            self.wait_until_appear(self.templates.hook, 5.0, "waiting_hook")
-            self._click_key("e")
-            self.wait_until_appear(self.templates.change, 5.0, "buying_bait")
-            self.controller.mouse_click(self.templates.change.pos)
+                for _ in range(getattr(config, "BUY_BAIT_STACK_COUNT", 5)):
+                    try:
+                        self.controller.mouse_click(self.templates.max.pos)
+                        self._sleep(0.2)
+                        self.controller.mouse_click(self.templates.buy.pos)
+                        self.wait_until_appear(self.templates.confirm, 5.0, "buying_bait")
+                        self._sleep(0.5)
+                        self.controller.mouse_click(self.templates.confirm.pos)
+                        self.wait_until_appear(self.templates.get_item, 5.0, "collecting")
+                        self._sleep(0.5)
+                        self.controller.mouse_click()
+                        self.wait_until_appear(self.templates.bait, 5.0, "buying_bait")
+                    except TimeoutError:
+                        break
+
+                self._click_key("esc")
+                self._sleep(0.5)
+                self.wait_until_appear(self.templates.hook, 5.0, "waiting_hook")
+                self._click_key("e")
+                self._sleep(0.5)
+                self.wait_until_appear(self.templates.change, 5.0, "buying_bait")
+                self._sleep(0.5)
+                self.controller.mouse_click(self.templates.change.pos)
+                self._sleep(0.5)
+            except TimeoutError:
+                self._click_key("esc")
+                self._sleep(0.5)
             return
 
         self.state.update(message="unknown_event")
@@ -1200,7 +1239,11 @@ class AutomationWorker(threading.Thread):
                         continue
                     self.state.update(message="casting")
                     self._click_key("f")
-                    if self.wait_until_appear_or_bar(self.templates.take_bait, 10.0, "waiting_bait", tracker) == "bar":
+                    result = self.wait_until_appear_or_bar(self.templates.take_bait, 10.0, "waiting_bait", tracker)
+                    if result == "bar":
+                        continue
+                    if result in ("need_bait", "full"):
+                        self.handle_event(detected_event=result)
                         continue
                     self._click_key("f")
 
