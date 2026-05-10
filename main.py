@@ -646,7 +646,15 @@ class GameController:
                 pass
             return None
         if frame is None:
+            self._none_streak = getattr(self, "_none_streak", 0) + 1
+            if self._none_streak >= 60:
+                self._none_streak = 0
+                try:
+                    self._restart_camera()
+                except Exception:
+                    pass
             return None
+        self._none_streak = 0
 
         left, top, right, bottom = self._game_rect()
         screen_h, screen_w = frame.shape[:2]
@@ -656,7 +664,7 @@ class GameController:
         bottom = clamp(bottom, 0, screen_h)
         cropped = frame[top:bottom, left:right]
         if cropped.shape[0] < 700 or cropped.shape[1] < 1200:
-            raise ValueError(f"Unsupported capture size: {cropped.shape[1]}x{cropped.shape[0]}")
+            return None  # Window may be minimized or resizing; skip frame.
 
         self.state.update(resolution=f"{cropped.shape[1]}x{cropped.shape[0]}")
         return cropped
@@ -1338,6 +1346,15 @@ class AutomationWorker(threading.Thread):
                 handle.write(traceback.format_exc())
         finally:
             KeyboardDriver.release_all()
+            # Release camera resources to prevent DXGI leaks between runs.
+            if self.controller is not None:
+                try:
+                    self.controller._restart_camera.__func__  # just verify attr exists
+                    if self.controller.camera is not None:
+                        self.controller.camera.stop()
+                        self.controller.camera.release()
+                except Exception:
+                    pass
 
 
 class OverlayBar:
