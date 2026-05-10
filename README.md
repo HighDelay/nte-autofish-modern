@@ -7,7 +7,6 @@ A standalone Python autofish script for NTE, built as a separate project from th
 - Transparent topmost horizontal overlay UI.
 - English and Vietnamese interface.
 - `F8` to pause/resume, backtick to exit.
-- Resolution-aware template matching for 720p-style captures and 1080p captures.
 - 1080p English template images under `assets/templates`.
 - Automatic fishing bar control.
 - Optional automatic fish selling.
