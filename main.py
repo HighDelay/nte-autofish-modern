@@ -1046,6 +1046,8 @@ class AutomationWorker(threading.Thread):
         self.controller: GameController | None = None
 
     def request_stop(self) -> None:
+        print("[AUTOFISH] request_stop() called from:")
+        traceback.print_stack()
         self.stop_event.set()
         self.pause_event.clear()
         KeyboardDriver.release_all()
@@ -1125,7 +1127,7 @@ class AutomationWorker(threading.Thread):
             # they are still on screen, instead of waiting for the full timeout.
             if self.templates.need_bait.match(frame):
                 return "need_bait"
-            if self.templates.full.match(frame):
+            if getattr(config, "SELL_FISH", False) and self.templates.full.match(frame):
                 return "full"
             time.sleep(getattr(config, "FISH_BAR_FAST_POLL_INTERVAL", 0.01))
         raise TimeoutError(f"Timed out waiting for {template.name}")
@@ -1145,11 +1147,13 @@ class AutomationWorker(threading.Thread):
         else:
             image = None
 
-        if detected_event == "full" or (image is not None and self.templates.full.match(image)):
+        sell_fish_enabled = getattr(config, "SELL_FISH", False)
+        if detected_event == "full" or (sell_fish_enabled and image is not None and self.templates.full.match(image)):
             self.state.update(message="storage_full")
-            if not getattr(config, "SELL_FISH", True):
-                self.state.update(status="stopped", message="storage_full")
-                raise StopAutomation()
+            if not sell_fish_enabled:
+                # SELL_FISH is off — just ignore storage-full and continue fishing.
+                print("[AUTOFISH] Storage full detected but SELL_FISH is off -> ignoring.")
+                return
             self._sleep(2.0)
             self._click_key("q")
             self.wait_until_appear(self.templates.fish_storage, 2.0, "storage_full")
@@ -1166,6 +1170,7 @@ class AutomationWorker(threading.Thread):
                     return
                 except TimeoutError:
                     self._click_key("esc")
+            print("[AUTOFISH] Sell-fish loop exhausted (stop_event set) -> stopping.")
             raise StopAutomation()
 
         if detected_event == "month_card" or (image is not None and self.templates.month_card.match(image)):
@@ -1178,6 +1183,7 @@ class AutomationWorker(threading.Thread):
         if detected_event == "need_bait" or (image is not None and self.templates.need_bait.match(image)):
             self.state.update(message="buying_bait")
             if not getattr(config, "BUY_BAIT", True):
+                print("[AUTOFISH] Need bait & BUY_BAIT is off -> stopping.")
                 self.state.update(status="stopped", message="buying_bait")
                 raise StopAutomation()
             try:
@@ -1335,8 +1341,13 @@ class AutomationWorker(threading.Thread):
                     self.handle_event()
 
         except StopAutomation:
-            self.state.update(status="stopped", message="stopped")
+            snap = self.state.snapshot()
+            reason = snap.get("message", "stopped")
+            print(f"[AUTOFISH] Automation stopped (StopAutomation). Reason: {reason}")
+            if snap.get("status") != "stopped":
+                self.state.update(status="stopped", message="stopped")
         except Exception as exc:
+            print(f"[AUTOFISH] Automation crashed: {exc}")
             KeyboardDriver.release_all()
             self.state.update(status="error", message="error", last_error=str(exc))
             log_dir = APP_DIR / "logs"
@@ -1856,7 +1867,16 @@ class OverlayBar:
                     if f8 and not last_f8:
                         self.root.after(0, self.start_or_toggle)
                     if backtick and not last_backtick:
-                        self.root.after(0, self.shutdown)
+                        # Only trigger shutdown if the game is NOT focused,
+                        # to prevent accidental exits from in-game key presses.
+                        fg = win32gui.GetForegroundWindow() if win32gui else 0
+                        game_focused = (
+                            self.worker is not None
+                            and self.worker.controller is not None
+                            and self.worker.controller.hwnd == fg
+                        )
+                        if not game_focused:
+                            self.root.after(0, self.shutdown)
                     last_f8 = f8
                     last_backtick = backtick
                     time.sleep(0.08)
